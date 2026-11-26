@@ -1,10 +1,11 @@
 import logging
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Path, Request, Response
 from fastapi.responses import JSONResponse
 from mysql.connector import Error as MySQLError
 
 from database import executar_sql
+from schemas import petEntrada, tutorEntrada
 
 app = FastAPI(title="API de pets e tutores — Projeto Integrador II")
 
@@ -29,7 +30,7 @@ def representar_tutor(tutor):
 @app.get("/tutores")
 def listar_tutores():
     sql = "SELECT tutor_id, nome, email FROM tutores ORDER BY tutor_id"
-    tutores = executar_sql(sql)
+    tutores = executar_sql(sql, escrita=False)
 
     return {
         "dados": [representar_tutor(tutor) for tutor in tutores],
@@ -54,7 +55,7 @@ def buscar_tutor_por_id(tutor_id: int):
 @app.get("/pets")
 def listar_pets():
     sql = "SELECT pet_id, nome, especie, tutorId FROM pets ORDER BY pet_id"
-    pets = executar_sql(sql)
+    pets = executar_sql(sql, escrita=False)
 
     return {
         "dados": [
@@ -89,4 +90,77 @@ def buscar_pet_por_id(pet_id: int):
             "especie": pet["especie"],
             "tutor_id": pet["tutorId"],
         }
+    }
+
+
+@app.post("/pets", status_code=201)
+def criar_pet(pet: petEntrada, response: Response):
+    sql = """INSERT INTO pets (nome, especie, tutorId) VALUES (%s, %s, %s)""".strip()
+
+    parametros = (pet.nome, pet.especie, pet.tutor_id)
+    resultado = executar_sql(sql, parametros)
+    pet_id = resultado["id_gerado"]
+
+    response.headers["Location"] = f"/pets/{pet_id}"
+
+    return {
+        "dados": {
+            "id": pet_id,
+            "nome": pet.nome,
+            "especie": pet.especie,
+            "tutor_id": pet.tutor_id,
+        },
+        "didatica": {"sql": sql, "parametros": parametros},
+    }
+
+
+@app.post("/tutores", status_code=201)
+def criar_tutor(tutor: tutorEntrada, response: Response):
+    sql = """INSERT INTO tutores (nome, email) VALUES (%s, %s)""".strip()
+
+    parametros = (tutor.nome, tutor.email)
+    resultado = executar_sql(sql, parametros)
+    tutor_id = resultado["id_gerado"]
+
+    response.headers["Location"] = f"/tutores/{tutor_id}"
+
+    return {
+        "dados": {
+            "id": tutor_id,
+            "nome": tutor.nome,
+            "email": tutor.email,
+        },
+        "didatica": {"sql": sql, "parametros": parametros},
+    }
+
+
+@app.put("/pets/{pet_id}")
+def atualizar_pet(pet: petEntrada, pet_id: int = Path(gt=0)):
+    sql_select = "SELECT pet_id FROM pets WHERE pet_id = %s"
+    existentes = executar_sql(sql_select, (pet_id,), escrita=False)
+
+    if not existentes:
+        raise HTTPException(
+            status_code=404,
+            detail="Pet não encontrado.",
+        )
+
+    sql_update = (
+        "UPDATE pets SET nome = %s, especie = %s, tutorId = %s WHERE pet_id = %s"
+    )
+    parametros_update = (pet.nome, pet.especie, pet.tutor_id, pet_id)
+
+    executar_sql(sql_update, parametros_update, escrita=True)
+
+    return {
+        "dados": {
+            "id": pet_id,
+            "nome": pet.nome,
+            "especie": pet.especie,
+            "tutor_id": pet.tutor_id,
+        },
+        "didatica": {
+            "sql": sql_update,
+            "parametros": parametros_update,
+        },
     }

@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).with_name(".env"))
 
 
-def executar_sql(sql, parametros=()):
+def executar_sql(sql, parametros=(), escrita=True):
     conexao = mysql.connector.connect(
         host=os.environ["DB_HOST"],
         port=int(os.environ["DB_PORT"]),
@@ -21,8 +21,18 @@ def executar_sql(sql, parametros=()):
     try:
         cursor = conexao.cursor(dictionary=True)
         cursor.execute(sql, parametros)
-        return cursor.fetchall()
 
+        if sql.strip().upper().startswith("SELECT"):
+            return cursor.fetchall()
+
+        conexao.commit()
+        return {"id_gerado": cursor.lastrowid}
+    except Exception:
+        if not escrita:
+            conexao.rollback()
+        else:
+            conexao.rollback()
+        raise
     finally:
         if cursor is not None:
             cursor.close()
